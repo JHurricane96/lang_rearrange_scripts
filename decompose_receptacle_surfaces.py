@@ -7,6 +7,7 @@ from pathlib import Path
 import json
 import os.path as osp
 import functools
+import shutil
 
 import trimesh
 import trimesh.graph
@@ -14,8 +15,9 @@ from tqdm import tqdm
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--config-dir", type=Path)
-parser.add_argument("--new-config-dir", type=Path)
-parser.add_argument("--surfaces-dir", type=Path)
+# parser.add_argument("--new-config-dir", type=Path)
+# parser.add_argument("--surfaces-dir", type=Path)
+parser.add_argument("--num-processes", "-n", type=int, default=10)
 parser.add_argument("--debug", action="store_true")
 
 def decompose_mesh(mesh: trimesh.Trimesh) -> List[trimesh.Trimesh]:
@@ -35,15 +37,17 @@ bad_meshes = [
     "05e68620260bd6328447c56da2bc0912923e1db3",
 ]
 
-def decompose_surface(config_file: Path, new_config_dir: Path, surfaces_dir: Path):
-    new_config_file = new_config_dir/config_file.name
-    if new_config_file.is_file():
-        return
+def decompose_surface(config_file: Path):
+    backup_config_file = config_file.with_suffix(".json.back")
+    if backup_config_file.is_file():
+        shutil.copy(backup_config_file, config_file)
+        # return
 
     if any(bad_mesh in config_file.name for bad_mesh in bad_meshes):
         print(f"Skipping {config_file} because it is a bad mesh.")
         return
-
+    
+    shutil.copy(config_file, backup_config_file)
     with open(config_file) as f:
         config = json.load(f)
 
@@ -52,10 +56,12 @@ def decompose_surface(config_file: Path, new_config_dir: Path, surfaces_dir: Pat
 
     decomposed_meshes: List[trimesh.Trimesh] = []
     new_mesh_configs = {}
+    assert len(config["user_defined"]) <= 1
     for surface_key, surface in config["user_defined"].items():
         assert surface_key.startswith("receptacle_mesh_")
-        receptacle_name = surface_key[len("receptacle_mesh_"):]
-        surface_file = config_file.parent/Path(surface["mesh_filepath"])
+        # receptacle_name = surface_key[len("receptacle_mesh_"):]
+        # surface_file = config_file.parent/Path(surface["mesh_filepath"])
+        surface_file = config_file.parent/Path(surface["mesh_filepath"]).name
 
         mesh = trimesh.load(surface_file)
         decomposed_meshes.extend(decompose_mesh(mesh))
@@ -66,30 +72,38 @@ def decompose_surface(config_file: Path, new_config_dir: Path, surfaces_dir: Pat
             decomposed_surface["name"] = decomposed_mesh_key
 
             new_file_name, file_suffix = surface_file.name.split(".", 1)
-            new_file = surfaces_dir/receptacle_name/f"{new_file_name}_{i}.{file_suffix}"
-            new_file.parent.mkdir(exist_ok=True, parents=True)
+            new_file = surface_file.parent/f"{new_file_name}_{i}.{file_suffix}"
+            # new_file = surfaces_dir/receptacle_name/f"{new_file_name}_{i}.{file_suffix}"
+            # new_file.parent.mkdir(exist_ok=True, parents=True)
             decomposed_mesh.export(new_file)
 
-            new_file = osp.relpath(new_file, new_config_dir)
+            new_file = osp.relpath(new_file, config_file.parent)
             decomposed_surface["mesh_filepath"] = str(new_file)
 
             new_mesh_configs[decomposed_mesh_key] = decomposed_surface
 
     config["user_defined"] = new_mesh_configs
-    with open(new_config_file, "w") as f:
+    with open(config_file, "w") as f:
         json.dump(config, f)
 
-def main(config_dir: Path, new_config_dir: Path, surfaces_dir: Path, debug: bool):
-    configs = list(config_dir.glob("*.json"))
-    new_config_dir.mkdir(exist_ok=True, parents=True)
-    surfaces_dir.mkdir(exist_ok=True, parents=True)
-    partial = functools.partial(decompose_surface, new_config_dir=new_config_dir, surfaces_dir=surfaces_dir)
+def main(
+    config_dir: Path,
+    # new_config_dir: Path,
+    # surfaces_dir: Path,
+    num_processes: int,
+    debug: bool,
+):
+    configs = list(config_dir.rglob("*.json"))
+    print(len(configs))
+    # new_config_dir.mkdir(exist_ok=True, parents=True)
+    # surfaces_dir.mkdir(exist_ok=True, parents=True)
+    # partial = functools.partial(decompose_surface, new_config_dir=new_config_dir)
     if debug:
         for config in tqdm(configs):
-            partial(config)
+            decompose_surface(config)
     else:
-        with Pool(10) as p:
-            list(tqdm(p.imap(partial, configs, chunksize=1), total=len(configs)))
+        with Pool(num_processes) as p:
+            list(tqdm(p.imap(decompose_surface, configs, chunksize=1), total=len(configs)))
 
 if __name__ == "__main__":
     args = parser.parse_args()
