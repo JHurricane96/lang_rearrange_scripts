@@ -22,14 +22,14 @@ def main(args):
         split_episodes[scene_id]["episodes"].append(episode)
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    for k, v in dataset.items():
-        if k == "episodes":
-            continue
-        for scene, split in split_episodes.items():
+    for scene, split in split_episodes.items():
+        for k, v in dataset.items():
+            if k == "episodes":
+                continue
             split[k] = v
 
-            with gzip.open(args.out_dir/f"{scene}.json.gz", "wt") as f:
-                json.dump(split, f)
+        with gzip.open(args.out_dir/f"{scene}.json.gz", "wt") as f:
+            json.dump(split, f)
 
 if __name__ == "__main__":
     args = parser.parse_args()
