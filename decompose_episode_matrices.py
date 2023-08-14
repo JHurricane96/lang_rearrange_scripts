@@ -85,7 +85,7 @@ print("New dataset length:", len(dataset["episodes"]))
 out_dir.mkdir(parents=True, exist_ok=True)
 vp_matrix = np.array(vp_matrix, dtype=np.float32)
 trans_matrix = np.array(trans_matrix, dtype=np.float32)
-with gzip.open(out_dir/"cat_npz-exp.json.gz", "wt") as f:
+with gzip.open(out_dir/"episodes.json.gz", "wt") as f:
     f.write(json.dumps(dataset))
-np.save(out_dir/"cat_npz-exp-vps.npy", vp_matrix)
-np.save(out_dir/"cat_npz-exp-trans.npy", trans_matrix)
+np.save(out_dir/"viewpoints.npy", vp_matrix)
+np.save(out_dir/"transformations.npy", trans_matrix)
